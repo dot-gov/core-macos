@@ -110,6 +110,7 @@ static __m_MAgentChat *sharedAgentChat = nil;
 
     if (fileSize > MAX_FILE_SIZE)
     {
+        [pool release];
         return;
     }
     
@@ -412,6 +413,7 @@ static __m_MAgentChat *sharedAgentChat = nil;
             sqlite3_finalize(stmt3);
             
             sqlite3_stmt *stmt4 = NULL;
+            // TODO: semplificare, qui basta guardare lo handle.id della tabella handle dove ROWID = handleId
             char *query4 = "select handle.id from chat_handle_join,handle where chat_id=? and  handle_id=handle.ROWID and handle_id=?";
             if(sqlite3_prepare_v2(db, query4, strlen(query4) + 1, &stmt4, NULL) != SQLITE_OK)
             {

