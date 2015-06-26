@@ -1580,7 +1580,7 @@ void logAttach(attachRecord *att)
 }
 
 
-int parseWADb(char *dbName, long epochMarkup)
+int parseWADb(mbdbRecord *head, char *dbName, long epochMarkup)
 {
     sqlite3 *db = NULL;
     sqlite3_stmt *stmt = NULL;
@@ -1589,7 +1589,8 @@ int parseWADb(char *dbName, long epochMarkup)
     
     char query[512];
     long date = epochMarkup;
-    char _query[] = "select zmessagedate, zisfromme, ztext, zfromjid, (select zmemberjid from zwagroupmember where zgroupmember = zwagroupmember.z_pk) , ztojid, (select zsessiontype from zwachatsession where zwamessage.zchatsession = zwachatsession.z_pk), (select GROUP_CONCAT(zmemberjid) from zwagroupmember where zwamessage.zchatsession = zwagroupmember.zchatsession) from zwamessage where zmessagetype = 0 and zmessagedate >";
+    // zmessagetype is 0 when it's about a text message and 1 when it's about an attachment
+    char _query[] = "select zmessagedate, zisfromme, ztext, zfromjid, (select zmemberjid from zwagroupmember where zgroupmember = zwagroupmember.z_pk) , ztojid, (select zsessiontype from zwachatsession where zwamessage.zchatsession = zwachatsession.z_pk), (select GROUP_CONCAT(zmemberjid) from zwagroupmember where zwamessage.zchatsession = zwagroupmember.zchatsession), zmedialocalpath from zwamessage left outer join zwamediaitem on zwamessage.z_pk=zwamediaitem.zmessage where zmessagetype<2 and zmessagedate >";
     
     // open db
     if (sqlite3_open(dbName, &db))
@@ -1621,22 +1622,20 @@ int parseWADb(char *dbName, long epochMarkup)
         }
         // text
         char *_text = (char *)sqlite3_column_text(stmt,2);
-        
-        if (_text == NULL)
+        if(_text != NULL)
         {
-            freeChatRecord(msg);
-            continue;
-        }
-        // text
-        if ((msg->text = calloc(strlen(_text) +1, sizeof(char))) != NULL)
-        {
-            strcpy(msg->text,_text);
+            if ((msg->text = calloc(strlen(_text) +1, sizeof(char))) != NULL)
+            {
+                strcpy(msg->text,_text);
+            }
         }
         // chat type
         msg->type = WA_CHAT;
         // chat date
         msg->epochTime = sqlite3_column_double(stmt,0);
         msg->epochTime += TimeIntervalSince1970;
+        // attach
+        char *attachFilename = (char*)sqlite3_column_text(stmt,8);
         // in,out flags
         int fromMe = sqlite3_column_int(stmt,1);
         msg->flags = ((fromMe == 1)? 0x00000000 : 0x00000001);
@@ -1726,6 +1725,38 @@ int parseWADb(char *dbName, long epochMarkup)
         // enqueue
         msg->next = msgsHead;
         msgsHead = msg;
+        if (attachFilename != NULL)
+        {
+            // there's an attachment
+            attachRecord att;
+            memset(&att,0,sizeof(attachRecord));
+            
+            mbdbRecord *current = head;
+            while (current!=NULL)
+            {
+                if (strend(current->filename,attachFilename))
+                {
+                    printf("found attachment\n");  // TODO: delete this!
+                    printf("filename: %s\n",current->sha1);   // TODO: delete this!
+                    att.to = msg->to;
+                    att.from = msg->from;
+                    att.filename = current->sha1;
+                    //att.mimeType = (char *)sqlite3_column_text(stmt,6);
+                    att.transferName = attachFilename;
+                    att.flags = msg->flags;
+                    att.type = msg->type;
+                    att.epochTime = msg->epochTime;
+                    
+                    break;
+                }
+                current = current->next;
+            }
+            // log attach, we don't want empty logs
+            if(att.filename != NULL)
+            {
+                logAttach(&att);
+            }
+        }
     }
     
     
@@ -1761,7 +1792,7 @@ int collectWhatsApp(mbdbRecord *head, long epochMarkup)
             infoLog(@"found wa db\n");
             infoLog(@"filename: %s\n",current->sha1);
 #endif
-            parseWADb(current->sha1, epochMarkup);
+            parseWADb(head, current->sha1, epochMarkup);
             return 1;
         }
         current = current->next;
