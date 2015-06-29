@@ -1736,11 +1736,64 @@ int parseWADb(mbdbRecord *head, char *dbName, long epochMarkup)
             {
                 if (strend(current->filename,attachFilename))
                 {
-                    printf("found attachment\n");  // TODO: delete this!
-                    printf("filename: %s\n",current->sha1);   // TODO: delete this!
                     att.to = msg->to;
                     att.from = msg->from;
                     att.filename = current->sha1;
+                    char *ext = NULL;
+                    if ((ext=strrchr(attachFilename, '.'))!=NULL)
+                    {
+                        // ok, strcasecmp it's not strictly pure C
+                        // but in this case i couldn't care less
+                        if (strcasecmp(ext, ".bmp")==0)
+                        {
+                            att.mimeType = "image/bmp";
+                        }
+                        else if (strcasecmp(ext, ".gif")==0)
+                        {
+                            att.mimeType = "image/gif";
+                        }
+                        else if (strcasecmp(ext, ".jpeg")==0)
+                        {
+                            att.mimeType = "image/jpeg";
+                        }
+                        else if (strcasecmp(ext, ".jpg")==0)
+                        {
+                            att.mimeType = "image/jpeg";
+                        }
+                        else if (strcasecmp(ext, ".png")==0)
+                        {
+                            att.mimeType = "image/png";
+                        }
+                        else if (strcasecmp(ext, ".avi")==0)
+                        {
+                            att.mimeType = "video/avi";
+                        }
+                        else if (strcasecmp(ext, ".mov")==0)
+                        {
+                            att.mimeType = "video/quicktime";
+                        }
+                        else if (strcasecmp(ext, ".mp4")==0)
+                        {
+                            att.mimeType = "video/mp4";
+                        }
+                        else if (strcasecmp(ext, ".wmv")==0)
+                        {
+                            att.mimeType = "video/x-ms-wmv";
+                        }
+                        else if (strcasecmp(ext, ".wma")==0)
+                        {
+                            att.mimeType = "audio/wav";
+                        }
+                        else if (strcasecmp(ext, ".m4a")==0)
+                        {
+                            att.mimeType = "audio/mp4a";
+                        }
+                        else if (strcasecmp(ext, ".mp3")==0)
+                        {
+                            att.mimeType = "audio/mpeg";
+                        }
+                    
+                    }
                     //att.mimeType = (char *)sqlite3_column_text(stmt,6);
                     att.transferName = attachFilename;
                     att.flags = msg->flags;
